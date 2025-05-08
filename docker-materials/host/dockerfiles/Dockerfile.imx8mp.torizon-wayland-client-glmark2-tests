@@ -1,0 +1,36 @@
+ARG base=torizon/weston-imx8
+ARG tag=stable-rc
+FROM $base:$tag
+#
+# The choice to use this particular version is because it is slightly slimmer than the chromium one and updating the image and committing it does not 
+# remove the image size, so within a CI/CD without exposure to the original dockerfile (it is observable, and there is a Debian from Torizon that I think
+# has the NXP libraries) it doesn't really matter.
+#
+# Since one needs a wayland compositor anyway, to "save space" one could use all of their heavy graphics work on this container.
+# 
+# If anyone is interested in design considerations and tradeoffs I can discuss it outside of this example. Long story short is that I don't like
+# huge dockers on embedded targets. Today you have 32GB or even 32TB - tomorrow you have 4GB and the stress of all of the customers or stakeholders
+# and they never understand (or don't want to...)
+#
+# Note: eglinfo segfaults and I think it's something Toradex (or NXP?) should set their mind to
+# Note: no man pages etc. so installing vim will blurb a bit but that's fine
+# Note: as per the time of creation, this image size (inside) is 871M which is a lot. Base image to blame of course
+
+ENV DEBIAN_FRONTEND=noninteractive
+# So this one has almost everything except for glmark2-es2-wayland, vim and strace. So let's get them on board
+RUN apt-get update -y --allow-releaseinfo-change --allow-unauthenticated && apt-get install -y --no-install-recommends glmark2-es2-wayland vim strace \
+	&& apt-get clean 	&& apt-get autoremove 	&& rm -rf /var/lib/apt/lists/* 
+
+
+# The entry point here is important as it initializes weston, taking into considerations the iMX8 modules. Therefore, it is left untouched.
+
+# If you don't want to run the entry point for weston - set it to something else, or make it empty and use CMD or docker run args
+# ENTRYPOINT []
+
+# Debugging tip: if you see "Error: main: Could not initialize canvas" it is very likely you ommited the entry point of the weston container, and don't have another container that runs a weston compositor
+
+# libegl1 conflicts with the NXP drivers. glmark2-wayland would not work here for this reason, but it is a good reference.
+#CMD ["glmark2-wayland"]
+# If you remove the entry point, you can just set it to be the test container by uncommenting the next line. This is overridable by the command line parameter if you wish (end of the docker run line)
+# so you can leave it. If there is an entry point, I think that unless there is a -- , the parameter is left untouched if I remember correctly
+# CMD ["glmark2-es2-wayland"]

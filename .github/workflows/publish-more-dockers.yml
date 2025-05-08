@@ -1,0 +1,281 @@
+# .github/workflows/publish-more-dockers.yml
+# Separate file to do it quick and dirty.
+# Here a matrix could be very good, as the only thing that differs is the build-args
+# 
+name: Publish Docker images to GHCR
+
+# Run this workflow when code is pushed to the main branch
+on:
+  push:
+    branches: ['imx8mp']
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Set permissions for the GITHUB_TOKEN to allow pushing to GHCR
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-and-push-images:
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_ARCH: arm64
+      CONTEXT_PATH: .
+      DOCKERFILES_PATH: docker-materials/host/dockerfiles
+      BUILD_ARGS_DEFAULTS: |
+        REGISTRY=ghcr.io/ronpscg/
+        tag=stable-rc
+        # Add any other default build arguments here
+      TAG: stable-rc
+
+    steps:
+    
+      - name: Show build machine
+        run: bash -c "lsb_release -a ; cat /etc/os-release ; uname -a ; free -m ; nproc ; cat /proc/cpuinfo"
+      
+      - name: Checkout repository
+        uses: actions/checkout@v4 # Checks out your repository's code
+
+      - name: Log in to the GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          # GITHUB_TOKEN is automatically created by Actions, needs 'packages: write' permission
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set lowercase repo name
+        id: set_vars
+        run: |
+          # Seems like a temporary variable is essential. Sigh...
+          tmp=${{github.repository}}
+          echo "LOWERCASE_REPONAME=${tmp,,}" >> $GITHUB_OUTPUT
+      
+      - name: Test vars
+        id: test_vars
+        run: |
+          echo "tags: ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/imx8mp.torizon-wayland-client-glmark2-tests:${{env.TAG}}"
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta # Assign an ID to refer to the outputs of this step
+        uses: docker/metadata-action@v5
+        with:
+          # Define image names. Uses ghcr.io/<repository owner>/<repository name>
+          images: ghcr.io/${{ github.repository }}
+          # Generates tags based on the event that triggered the workflow
+          # - For pushes to main, it will use 'latest' and the commit SHA
+          # - For tags (like v1.0.0), it will use the tag name
+          tags: |
+            type=schedule
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      #
+      # Hardcore copy pasting starts here, heh. ( --> Matrix - but this is a one timer repo anyway )
+      #
+      - name: Build and push docker image - Chromium
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{env.CONTEXT_PATH}} 
+          file: ${{env.DOCKERFILES_PATH}}/Dockerfile.imx8mp.torizon-wayland-client-non-root
+          platforms: linux/arm64  # This is important for github actions
+          push: true # Actually push the image after building
+          build-args: | 
+            ${{env.BUILD_ARGS_DEFAULTS}}
+            base=torizon/chromium-imx8
+          # Note the macro: since the username has a capital letter, it cannot be used as an image name/tag (!). This (bash) macro converts it to lowercase
+          tags: |
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/imx8mp.torizon-wayland-client-chromium:${{env.TAG}}
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/${{ env.DOCKER_ARCH }}/imx8mp.torizon-wayland-client-chromium:${{env.TAG}}
+          labels: ${{ steps.meta.outputs.labels }} # Use the labels generated in the previous step
+
+      - name: Build and push docker image - gputop
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{env.CONTEXT_PATH}} 
+          file: ${{env.DOCKERFILES_PATH}}/Dockerfile.imx8mp.torizon-wayland-client-non-root
+          platforms: linux/arm64  # This is important for github actions
+          push: true # Actually push the image after building
+          build-args: | 
+            ${{env.BUILD_ARGS_DEFAULTS}}
+            base=torizon/gputop-imx8
+            tag=rc
+          # Note the macro: since the username has a capital letter, it cannot be used as an image name/tag (!). This (bash) macro converts it to lowercase
+          tags: |
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/imx8mp.torizon-wayland-client-gputop:rc
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/${{ env.DOCKER_ARCH }}/imx8mp.torizon-wayland-client-gputop:rc
+          labels: ${{ steps.meta.outputs.labels }} # Use the labels generated in the previous step
+          
+      - name: Build and push docker image - debian (imx8)
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{env.CONTEXT_PATH}} 
+          file: ${{env.DOCKERFILES_PATH}}/Dockerfile.imx8mp.torizon-wayland-client-non-root
+          platforms: linux/arm64  # This is important for github actions
+          push: true # Actually push the image after building
+          build-args: | 
+            ${{env.BUILD_ARGS_DEFAULTS}}
+            base=torizon/debian-imx8
+          # Note the macro: since the username has a capital letter, it cannot be used as an image name/tag (!). This (bash) macro converts it to lowercase
+          tags: |
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/imx8mp.torizon-wayland-client-debian:${{env.TAG}}
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/${{ env.DOCKER_ARCH }}/imx8mp.torizon-wayland-client-debian:${{env.TAG}}
+          labels: ${{ steps.meta.outputs.labels }} # Use the labels generated in the previous step
+
+      - name: Build and push docker image - wayland-base
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{env.CONTEXT_PATH}} 
+          file: ${{env.DOCKERFILES_PATH}}/Dockerfile.imx8mp.torizon-wayland-client-non-root
+          platforms: linux/arm64  # This is important for github actions
+          push: true # Actually push the image after building
+          build-args: | 
+            ${{env.BUILD_ARGS_DEFAULTS}}
+            base=torizon/wayland-base-imx8
+          # Note the macro: since the username has a capital letter, it cannot be used as an image name/tag (!). This (bash) macro converts it to lowercase
+          tags: |
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/imx8mp.torizon-wayland-client-wayland-base:${{env.TAG}}
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/${{ env.DOCKER_ARCH }}/imx8mp.torizon-wayland-client-wayland-base:${{env.TAG}}
+          labels: ${{ steps.meta.outputs.labels }} # Use the labels generated in the previous step
+
+      - name: Build and push docker image - graphics-tests
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{env.CONTEXT_PATH}} 
+          file: ${{env.DOCKERFILES_PATH}}/Dockerfile.imx8mp.torizon-wayland-client-non-root
+          platforms: linux/arm64  # This is important for github actions
+          push: true # Actually push the image after building
+          build-args: | 
+            ${{env.BUILD_ARGS_DEFAULTS}}
+            base=torizon/graphics-tests-imx8
+          # Note the macro: since the username has a capital letter, it cannot be used as an image name/tag (!). This (bash) macro converts it to lowercase
+          tags: |
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/imx8mp.torizon-wayland-client-graphics-tests:${{env.TAG}}
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/${{ env.DOCKER_ARCH }}/imx8mp.torizon-wayland-client-graphics-tests:${{env.TAG}}
+          labels: ${{ steps.meta.outputs.labels }} # Use the labels generated in the previous step
+
+      - name: Build and push docker image - gtk3-tests-imx8
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{env.CONTEXT_PATH}} 
+          file: ${{env.DOCKERFILES_PATH}}/Dockerfile.imx8mp.torizon-wayland-client-non-root
+          platforms: linux/arm64  # This is important for github actions
+          push: true # Actually push the image after building
+          build-args: | 
+            ${{env.BUILD_ARGS_DEFAULTS}}
+            base=torizon/gtk3-tests-imx8
+          # Note the macro: since the username has a capital letter, it cannot be used as an image name/tag (!). This (bash) macro converts it to lowercase
+          tags: |
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/imx8mp.torizon-wayland-client-gtk3-tests:${{env.TAG}}
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/${{ env.DOCKER_ARCH }}/imx8mp.torizon-wayland-client-gtk3-tests:${{env.TAG}}
+          labels: ${{ steps.meta.outputs.labels }} # Use the labels generated in the previous step
+
+      - name: Build and push docker image - wayland-gtk3-imx8
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{env.CONTEXT_PATH}} 
+          file: ${{env.DOCKERFILES_PATH}}/Dockerfile.imx8mp.torizon-wayland-client-non-root
+          platforms: linux/arm64  # This is important for github actions
+          push: true # Actually push the image after building
+          build-args: | 
+            ${{env.BUILD_ARGS_DEFAULTS}}
+            base=torizon/wayland-gtk3-imx8
+          # Note the macro: since the username has a capital letter, it cannot be used as an image name/tag (!). This (bash) macro converts it to lowercase
+          tags: |
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/imx8mp.torizon-wayland-client-wayland-gtk3:${{env.TAG}}
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/${{ env.DOCKER_ARCH }}/imx8mp.torizon-wayland-client-wayland-gtk3:${{env.TAG}}
+          labels: ${{ steps.meta.outputs.labels }} # Use the labels generated in the previous step
+
+      - name: Build and push docker image - cog
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{env.CONTEXT_PATH}} 
+          file: ${{env.DOCKERFILES_PATH}}/Dockerfile.imx8mp.torizon-wayland-client-non-root
+          platforms: linux/arm64  # This is important for github actions
+          push: true # Actually push the image after building
+          build-args: | 
+            ${{env.BUILD_ARGS_DEFAULTS}}
+            base=torizon/cog-imx8
+          # Note the macro: since the username has a capital letter, it cannot be used as an image name/tag (!). This (bash) macro converts it to lowercase
+          tags: |
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/imx8mp.torizon-wayland-client-cog:${{env.TAG}}
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/${{ env.DOCKER_ARCH }}/imx8mp.torizon-wayland-client-cog:${{env.TAG}}
+          labels: ${{ steps.meta.outputs.labels }} # Use the labels generated in the previous step
+
+      - name: Build and push docker image - chromium-tests
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{env.CONTEXT_PATH}} 
+          file: ${{env.DOCKERFILES_PATH}}/Dockerfile.imx8mp.torizon-wayland-client-non-root
+          platforms: linux/arm64  # This is important for github actions
+          push: true # Actually push the image after building
+          build-args: | 
+            ${{env.BUILD_ARGS_DEFAULTS}}
+            base=torizon/chromium-tests-imx8
+          # Note the macro: since the username has a capital letter, it cannot be used as an image name/tag (!). This (bash) macro converts it to lowercase
+          tags: |
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/imx8mp.torizon-wayland-client-chromium-tests:${{env.TAG}}
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/${{ env.DOCKER_ARCH }}/imx8mp.torizon-wayland-client-chromium-tests:${{env.TAG}}
+          labels: ${{ steps.meta.outputs.labels }} # Use the labels generated in the previous step
+          
+      # Disabled as it is not buildable: #6 16.18 E: Failed to fetch https://debian-packages.qt.io/debian/enterprise/qt-6.8.2-arm64-test-gles/dists/tqtc-bookworm/InRelease  401  Unauthorized [IP: 15.197.253.240 443]    
+      - name: Build and push docker image - qt6-enterprise-demo
+        if: false  # Disables the step
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{env.CONTEXT_PATH}} 
+          file: ${{env.DOCKERFILES_PATH}}/Dockerfile.imx8mp.torizon-wayland-client-non-root
+          platforms: linux/arm64  # This is important for github actions
+          push: true # Actually push the image after building
+          build-args: | 
+            ${{env.BUILD_ARGS_DEFAULTS}}
+            base=torizon/qt6-enterprise-demo-imx8
+          # Note the macro: since the username has a capital letter, it cannot be used as an image name/tag (!). This (bash) macro converts it to lowercase
+          tags: |
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/imx8mp.torizon-wayland-client-qt6-enterprise-demo:${{env.TAG}}
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/${{ env.DOCKER_ARCH }}/imx8mp.torizon-wayland-client-qt6-enterprise-demo:${{env.TAG}}
+          labels: ${{ steps.meta.outputs.labels }} # Use the labels generated in the previous step
+
+      - name: Build and push docker image - qt6-wayland
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{env.CONTEXT_PATH}} 
+          file: ${{env.DOCKERFILES_PATH}}/Dockerfile.imx8mp.torizon-wayland-client-non-root
+          platforms: linux/arm64  # This is important for github actions
+          push: true # Actually push the image after building
+          build-args: | 
+            ${{env.BUILD_ARGS_DEFAULTS}}
+            base=torizon/qt6-wayland-imx8
+          # Note the macro: since the username has a capital letter, it cannot be used as an image name/tag (!). This (bash) macro converts it to lowercase
+          tags: |
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/imx8mp.torizon-wayland-client-qt6-wayland:${{env.TAG}}
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/${{ env.DOCKER_ARCH }}/imx8mp.torizon-wayland-client-qt6-wayland:${{env.TAG}}
+          labels: ${{ steps.meta.outputs.labels }} # Use the labels generated in the previous step
+
+      - name: Build and push docker image - qt6-wayland-examples
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{env.CONTEXT_PATH}} 
+          file: ${{env.DOCKERFILES_PATH}}/Dockerfile.imx8mp.torizon-wayland-client-non-root
+          platforms: linux/arm64  # This is important for github actions
+          push: true # Actually push the image after building
+          build-args: | 
+            ${{env.BUILD_ARGS_DEFAULTS}}
+            base=torizon/qt6-wayland-examples-imx8
+          # Note the macro: since the username has a capital letter, it cannot be used as an image name/tag (!). This (bash) macro converts it to lowercase
+          tags: |
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/imx8mp.torizon-wayland-client-qt6-wayland-examples:${{env.TAG}}
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/${{ env.DOCKER_ARCH }}/imx8mp.torizon-wayland-client-qt6-wayland-examples:${{env.TAG}}
+          labels: ${{ steps.meta.outputs.labels }} # Use the labels generated in the previous step
