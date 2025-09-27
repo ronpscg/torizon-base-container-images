@@ -1,5 +1,5 @@
 # .github/workflows/publish.yml
-name: Publish Docker image to GHCR
+name: Publish Docker images to GHCR
 
 # Run this workflow when code is pushed to the main branch
 on:
@@ -79,7 +79,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Build and push Docker image - TorizonOS (user root)
+      - name: Build and push Docker image - glmark2-tests (user root)
         uses: docker/build-push-action@v5
         with:
           context: ${{env.CONTEXT_PATH}} 
@@ -94,7 +94,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }} # Use the labels generated in the previous step
 
 
-      - name: Build and push Docker image - TorizonOS (user torizon)
+      - name: Build and push Docker image - glmark2-tests (user torizon)
         uses: docker/build-push-action@v5
         with:
           context: ${{env.CONTEXT_PATH}} 
@@ -109,4 +109,20 @@ jobs:
             ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/imx8mp.torizon-wayland-client-non-root-glmark2-tests:${{env.TAG}}
             ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/${{ env.DOCKER_ARCH }}/imx8mp.torizon-wayland-client-non-root-glmark2-tests:${{env.TAG}}
           labels: ${{ steps.meta.outputs.labels }} # Use the labels generated in the previous step
+
+      - name: Build and push Docker image - Tauri Trivial App (user torizon)
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{env.CONTEXT_PATH}} 
+          file: ${{env.DOCKERFILES_PATH}}/Dockerfile.imx8mp.torizon.wayland-client-tauri-trivial-app
+          platforms: linux/arm64  # This is important for github actions
+          push: true # Actually push the image after building
+          build-args: | 
+            ${{env.BUILD_ARGS_DEFAULTS}}
+          # Note the macro: if the username has capital letters, it cannot be used as an image name/tag. This (bash) macro converts it to lowercase
+          tags: |
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/imx8mp.torizon-wayland-client-tauri-trivial-app:${{env.TAG}}
+            ghcr.io/${{ steps.set_vars.outputs.LOWERCASE_REPONAME }}/${{ env.DOCKER_ARCH }}/imx8mp.torizon-wayland-client-tauri-trivial-app:${{env.TAG}}
+          labels: ${{ steps.meta.outputs.labels }} # Use the labels generated in the previous step
+
 

@@ -1,0 +1,14 @@
+ARG base=torizon/weston-imx8
+ARG tag=stable-rc
+FROM $base:$tag
+
+# By all means, see more comments, notes and discussions on the other Docker files. 
+# This file is meant to demonstrate getting a file from a public github release.
+# On github actions, you would do this with the gh tool, e.g. gh release download --repo  github.com/ronpscg/tauri-trivial-app app-v0.1.0  --pattern "tauri-trivial-app_0.1.0_arm64.deb"
+# On a docker file, you can definitely access it directly, as here
+
+ENV DEBIAN_FRONTEND=noninteractive
+# So this one has almost everything except for glmark2-es2-wayland, vim and strace. So let's get them on board
+RUN apt-get update -y --allow-releaseinfo-change --allow-unauthenticated && apt-get install -y --no-install-recommends vim strace \
+    && mkdir -p /setup/ && cd /setup && wget https://github.com/ronpscg/tauri-trivial-app/releases/download/app-v0.1.0/tauri-trivial-app_0.1.0_arm64.deb  && apt-get install ./tauri-trivial-app_0.1.0_arm64.deb && cd / && rm -rf /setup \
+    && apt-get clean && apt-get autoremove && rm -rf /var/lib/apt/lists/* 
