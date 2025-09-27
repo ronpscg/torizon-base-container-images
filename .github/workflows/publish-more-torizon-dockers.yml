@@ -2,7 +2,7 @@
 # Separate file to do it quick and dirty.
 # Here a matrix could be very good, as the only thing that differs is the build-args
 # 
-name: Publish Docker images to GHCR
+name: Publish Torizon upstream based Docker images to GHCR
 
 # Run this workflow when code is pushed to the main branch
 on:
